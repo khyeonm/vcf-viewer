@@ -2,20 +2,23 @@
 
 Variant Call Format viewer with colored bases and metadata
 
+## Features
+
+- Colored REF/ALT base display (A=green, T=red, G=gold, C=blue)
+- VCF header metadata parsing (INFO, FORMAT, FILTER fields)
+- Variant type classification (SNP, INDEL, MNP)
+- Chromosome and position display
+- QUAL score column
+- Text search across all fields
+- Pagination for large files (100 variants per page)
+
 ## Supported Extensions
 
 - `.vcf`
 
 ## Installation
 
-Install via the AutoPipe app:
-```
-install_plugin("vcf-viewer")
-```
-
-Or manually copy this directory to your plugins folder:
-- Linux/Mac: `~/.local/share/autopipe/plugins/vcf-viewer/`
-- Windows: `%APPDATA%\autopipe\plugins\vcf-viewer\`
+Install from the **Plugins** tab in the AutoPipe desktop app.
 
 ## Development
 
