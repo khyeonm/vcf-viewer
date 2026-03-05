@@ -96,13 +96,16 @@
 
   async function renderPage(name, page) {
     if (!_container) return;
+    // When in IGV+tab mode, target the #__plugin_content__ div if it exists
+    var target = _container.querySelector('#__plugin_content__') || _container;
+
     if (page > 0) {
-      _container.innerHTML = '<div class="vcf-viewer"><p class="vcf-meta">Loading page...</p></div>';
+      target.innerHTML = '<div class="vcf-viewer"><p class="vcf-meta">Loading page...</p></div>';
     }
 
     var data = await fetchPage(name, page);
     if (data.error) {
-      _container.innerHTML =
+      target.innerHTML =
         '<div class="vcf-viewer"><p style="color:red">Error: ' + escapeHtml(data.error) + '</p></div>';
       return;
     }
@@ -130,7 +133,7 @@
 
     html += renderTable(name, hdrs, data.rows || [], data.total || 0, page);
     html += '</div>';
-    _container.innerHTML = html;
+    target.innerHTML = html;
   }
 
   // Global pagination handler
@@ -139,13 +142,121 @@
     renderPage(name, page);
   };
 
+  // ── IGV.js integration ──
+  var KNOWN_GENOMES = [
+    {id:'hg38', label:'Human (GRCh38/hg38)'},
+    {id:'hg19', label:'Human (GRCh37/hg19)'},
+    {id:'mm39', label:'Mouse (GRCm39/mm39)'},
+    {id:'mm10', label:'Mouse (GRCm38/mm10)'},
+    {id:'rn7',  label:'Rat (mRatBN7.2/rn7)'},
+    {id:'rn6',  label:'Rat (Rnor_6.0/rn6)'},
+    {id:'dm6',  label:'Fruit fly (BDGP6/dm6)'},
+    {id:'ce11', label:'C. elegans (WBcel235/ce11)'},
+    {id:'danRer11', label:'Zebrafish (GRCz11/danRer11)'},
+    {id:'sacCer3',  label:'Yeast (sacCer3)'},
+    {id:'tair10',   label:'Arabidopsis (TAIR10)'},
+    {id:'galGal6',  label:'Chicken (GRCg6a/galGal6)'}
+  ];
+  var _igvRef = null;
+  var _igvMode = 'data';
+  var _selectedGenome = null;
+
+  function _fetchReference() {
+    return fetch('/api/reference').then(function(r) { return r.json(); })
+      .then(function(d) { _igvRef = d.reference || null; })
+      .catch(function() { _igvRef = null; });
+  }
+
+  function _loadIgvJs() {
+    return new Promise(function(resolve, reject) {
+      if (window.igv) { resolve(); return; }
+      var s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/igv@3/dist/igv.min.js';
+      s.onload = function() { resolve(); };
+      s.onerror = function() { reject(new Error('Failed to load igv.js')); };
+      document.head.appendChild(s);
+    });
+  }
+
+  function _buildGenomeDropdown() {
+    var current = _selectedGenome || _igvRef || '';
+    var html = '<span style="font-size:12px;color:#888;font-weight:500;margin-right:4px">Reference:</span>';
+    html += '<select id="__igv_genome_select__" style="font-size:12px;padding:4px 8px;max-width:220px;border:1px solid #ddd;border-radius:4px">';
+    html += '<option value="' + (_igvRef || '') + '"' + (current === _igvRef ? ' selected' : '') + '>' + (_igvRef || 'none') + '</option>';
+    KNOWN_GENOMES.forEach(function(g) {
+      if (g.id !== _igvRef) {
+        html += '<option value="' + g.id + '"' + (current === g.id ? ' selected' : '') + '>' + g.label + '</option>';
+      }
+    });
+    html += '</select>';
+    return html;
+  }
+
+  function _renderIgv(container, fileUrl, filename, trackType, trackFormat) {
+    container.innerHTML = '<div id="__igv_div__">Loading IGV.js...</div>';
+    _loadIgvJs().then(function() {
+      var div = document.getElementById('__igv_div__');
+      if (!div) return;
+      div.innerHTML = '';
+      var activeRef = _selectedGenome || _igvRef;
+      var opts = {};
+      var knownIds = KNOWN_GENOMES.map(function(g) { return g.id; });
+      if (knownIds.indexOf(activeRef) >= 0) {
+        opts.genome = activeRef;
+      } else {
+        opts.reference = { fastaURL: '/file/' + encodeURIComponent(activeRef), indexed: false };
+      }
+      opts.tracks = [{ type: trackType, format: trackFormat, url: fileUrl, name: filename }];
+      igv.createBrowser(div, opts);
+    }).catch(function(e) {
+      container.innerHTML = '<div style="color:red;padding:16px;">IGV Error: ' + e.message + '</div>';
+    });
+  }
+
+  var TRACK_TYPE = 'variant';
+  var TRACK_FORMAT = 'vcf';
+
+  function _renderData(container, fileUrl, filename) {
+    container.innerHTML = '<div class="vcf-viewer"><p class="vcf-meta">Loading VCF...</p></div>';
+    renderPage(filename, 0).catch(function (e) {
+      container.innerHTML =
+        '<div class="vcf-viewer"><p style="color:red">Error: ' + e.message + '</p></div>';
+    });
+  }
+
+  function _showView(container, fileUrl, filename) {
+    if (_igvRef) {
+      var tabsHtml = '<div style="display:flex;gap:4px;margin-bottom:12px">';
+      tabsHtml += '<button id="__tab_data__" style="padding:6px 16px;border:1px solid #ddd;border-radius:4px;cursor:pointer;font-size:13px;' + (_igvMode === 'data' ? 'background:#007bff;color:white;border-color:#007bff' : 'background:#f8f8f8') + '">Data</button>';
+      tabsHtml += '<button id="__tab_igv__" style="padding:6px 16px;border:1px solid #ddd;border-radius:4px;cursor:pointer;font-size:13px;' + (_igvMode === 'igv' ? 'background:#007bff;color:white;border-color:#007bff' : 'background:#f8f8f8') + '">IGV</button>';
+      tabsHtml += '</div>';
+      if (_igvMode === 'igv') tabsHtml += _buildGenomeDropdown();
+      container.innerHTML = tabsHtml + '<div id="__plugin_content__"></div>';
+
+      container.querySelector('#__tab_data__').onclick = function() { _igvMode = 'data'; _showView(container, fileUrl, filename); };
+      container.querySelector('#__tab_igv__').onclick = function() { _igvMode = 'igv'; _showView(container, fileUrl, filename); };
+      var genomeSelect = container.querySelector('#__igv_genome_select__');
+      if (genomeSelect) genomeSelect.onchange = function() { _selectedGenome = this.value; _showView(container, fileUrl, filename); };
+
+      var content = container.querySelector('#__plugin_content__');
+      if (_igvMode === 'igv') {
+        _renderIgv(content, fileUrl, filename, TRACK_TYPE, TRACK_FORMAT);
+      } else {
+        _renderData(content, fileUrl, filename);
+      }
+    } else {
+      _renderData(container, fileUrl, filename);
+    }
+  }
+
   window.AutoPipePlugin = {
     render: function (container, fileUrl, filename) {
       _container = container;
-      container.innerHTML = '<div class="vcf-viewer"><p class="vcf-meta">Loading VCF...</p></div>';
-      renderPage(filename, 0).catch(function (e) {
-        container.innerHTML =
-          '<div class="vcf-viewer"><p style="color:red">Error: ' + e.message + '</p></div>';
+      _igvMode = 'data';
+      _selectedGenome = null;
+
+      _fetchReference().then(function() {
+        _showView(container, fileUrl, filename);
       });
     },
     destroy: function () {
