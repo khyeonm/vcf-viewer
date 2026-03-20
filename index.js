@@ -98,7 +98,7 @@
     if (!_container) return;
 
     if (page > 0) {
-      _container.innerHTML = '<div class="vcf-viewer"><p class="vcf-meta">Loading page...</p></div>';
+      _container.innerHTML = '<div class="ap-loading">Loading...</div>';
     }
 
     var data = await fetchPage(name, page);
@@ -143,7 +143,7 @@
   window.AutoPipePlugin = {
     render: function (container, fileUrl, filename) {
       _container = container;
-      _container.innerHTML = '<div class="vcf-viewer"><p class="vcf-meta">Loading VCF...</p></div>';
+      _container.innerHTML = '<div class="ap-loading">Loading...</div>';
       renderPage(filename, 0).catch(function (e) {
         _container.innerHTML =
           '<div class="vcf-viewer"><p style="color:red">Error: ' + e.message + '</p></div>';

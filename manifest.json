@@ -1,6 +1,6 @@
 {
   "name": "vcf-viewer",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Variant Call Format viewer with colored bases and metadata",
   "extensions": [
     "vcf"
